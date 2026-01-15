@@ -282,7 +282,8 @@ def thread_capture_frames():
     while True:
         try:
             print("🔌 Connecting to ESP32 stream...")
-            cap = cv2.VideoCapture(ESP32_CAM_URL)
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+            cap = cv2.VideoCapture(ESP32_CAM_URL, cv2.CAP_FFMPEG)
             
             if not cap.isOpened():
                 raise Exception("Failed to open video stream")
@@ -823,26 +824,32 @@ def thread_hls_converter(stream_type='raw'):
                 
                 # Extract JPEG data
                 if b'\r\n\r\n' in frame_data:
-                    jpeg_data = frame_data.split(b'\r\n\r\n')[1].split(b'\r\n')[0]
-                    try:
-                        process.stdin.write(jpeg_data)
-                        process.stdin.flush()
-                        frame_count += 1
+                    parts = frame_data.split(b'\r\n\r\n')
+                    if len(parts) > 1:
+                        # Get the actual image data
+                        jpeg_payload = parts[1].split(b'\r\n')[0]
                         
-                        if frame_count == 1:
-                            print(f"   ✅ First frame sent to FFmpeg ({stream_type})")
-                        elif frame_count == 10:
-                            print(f"   📊 {stream_type}: 10 frames sent, checking output...")
-                            if os.path.exists(playlist_file):
-                                print(f"   ✅ {stream_type}: HLS playlist created!")
-                            else:
-                                print(f"   ⚠️ {stream_type}: No playlist yet, still buffering...")
-                        elif frame_count % 100 == 0:
-                            print(f"   📊 HLS {stream_type}: {frame_count} frames encoded")
-                    except Exception as e:
-                        print(f"   ⚠️ Write error {stream_type}: {e}")
-                        break
-            
+                        # Only write if we have valid data (checks for JPEG Start/End bytes)
+                        if len(jpeg_payload) > 0 and jpeg_payload.startswith(b'\xff\xd8') and jpeg_payload.endswith(b'\xff\xd9'):
+                            try:
+                                process.stdin.write(jpeg_payload)
+                                process.stdin.flush()
+                                frame_count += 1
+                                
+                                if frame_count == 1:
+                                    print(f"   ✅ First frame sent to FFmpeg ({stream_type})")
+                                elif frame_count == 10:
+                                    print(f"   📊 {stream_type}: 10 frames sent, checking output...")
+                                    if os.path.exists(playlist_file):
+                                        print(f"   ✅ {stream_type}: HLS playlist created!")
+                                    else:
+                                        print(f"   ⚠️ {stream_type}: No playlist yet, still buffering...")
+                                elif frame_count % 100 == 0:
+                                    print(f"   📊 HLS {stream_type}: {frame_count} frames encoded")
+                            except Exception as e:
+                                print(f"   ⚠️ Write error {stream_type}: {e}")
+                                break
+                    
         except Exception as e:
             print(f"⚠️ HLS {stream_type} error: {e}")
             if ffmpeg_processes[stream_type]:
