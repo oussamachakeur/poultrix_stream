@@ -279,26 +279,33 @@ def thread_capture_frames():
     consecutive_errors = 0
     max_errors = 5
     
+    # 1. CRITICAL: Force TCP and set a lower timeout (5 seconds instead of 30)
+    # 'stimeout' is in microseconds (5000000 = 5s)
+    # 'rtsp_transport;tcp' prevents packet loss over Ngrok
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;5000000"
+    
     while True:
+        cap = None
         try:
-            print("🔌 Connecting to ESP32 stream...")
-            #improving the RTSP connection stability
-            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
-            cap = cv2.VideoCapture(ESP32_CAM_URL, cv2.CAP_FFMPEG) # adding FFMPEG backend
+            print(f"🔌 Connecting to stream: {ESP32_CAM_URL}")
+            cap = cv2.VideoCapture(ESP32_CAM_URL, cv2.CAP_FFMPEG)
+            
+            # Reduce buffer size to minimize lag
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             
             if not cap.isOpened():
-                raise Exception("Failed to open video stream")
+                raise Exception("Could not open RTSP stream")
             
             print("✓ ESP32 connected")
             consecutive_errors = 0
             frame_count = 0
-            last_frame_time = time.time()
             
             while True:
+                # This read() will now timeout in 5s if stream dies (thanks to stimeout)
                 ret, frame = cap.read()
                 
                 if not ret:
-                    print("⚠️ Failed to read frame from stream")
+                    print("⚠️ Stream read returned False (Stream ended/lagged)")
                     break
                 
                 if frame is not None and frame.size > 0:
@@ -306,28 +313,31 @@ def thread_capture_frames():
                         state.raw_frame = frame
                     
                     frame_count += 1
-                    if frame_count == 1:
-                        print(f"📸 First frame captured: {frame.shape}")
-                    elif frame_count % 100 == 0:
-                        fps = 100 / (time.time() - last_frame_time)
-                        print(f"📊 Frames: {frame_count} | Capture FPS: {fps:.1f}")
-                        last_frame_time = time.time()
+                    if frame_count % 100 == 0:
+                        print(f"📊 Captured {frame_count} frames")
+                else:
+                    print("⚠️ Empty frame received")
+                    break
                 
+                # Small sleep to prevent CPU spiking if stream is sending junk
                 time.sleep(0.01)
-            
-            cap.release()
-            print("⚠️ Stream ended, reconnecting...")
             
         except Exception as e:
             consecutive_errors += 1
             print(f"⚠️ Capture error ({consecutive_errors}/{max_errors}): {e}")
             
+        finally:
+            # Ensure resource release
+            if cap:
+                cap.release()
+            
             if consecutive_errors >= max_errors:
-                print(f"❌ Too many errors, waiting 30s before retry...")
+                print(f"❌ Connection unstable. Waiting 30s cooldown...")
                 time.sleep(30)
                 consecutive_errors = 0
             else:
-                time.sleep(5)
+                print("🔄 Reconnecting in 2s...")
+                time.sleep(2)
 
 # ============================================
 # THREAD 2: GPU Inference
