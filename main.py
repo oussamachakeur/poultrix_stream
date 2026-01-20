@@ -279,14 +279,20 @@ def thread_capture_frames():
     consecutive_errors = 0
     max_errors = 5
     
-    # 1. CRITICAL: Force TCP and set a lower timeout (5 seconds instead of 30)
-    # 'stimeout' is in microseconds (5000000 = 5s)
-    # 'rtsp_transport;tcp' prevents packet loss over Ngrok
-    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;5000000"
+    # 1. CRITICAL: Force TCP and set a longer timeout
+    # 'stimeout' is in microseconds (120000000 = 2 minutes)
+    # 'analyzeduration' and 'probesize' reduce startup analysis time
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;120000000|analyzeduration;500000|probesize;500000"
     
     while True:
         cap = None
         try:
+            # Check if URL is valid before attempting connection
+            if not ESP32_CAM_URL or "ngrok" not in ESP32_CAM_URL and "127.0.0.1" not in ESP32_CAM_URL:
+                 print(f"⚠️ Invalid ESP32_CAM_URL: {ESP32_CAM_URL}. Waiting...")
+                 time.sleep(10)
+                 continue
+
             print(f"🔌 Connecting to stream: {ESP32_CAM_URL}")
             cap = cv2.VideoCapture(ESP32_CAM_URL, cv2.CAP_FFMPEG)
             
@@ -294,14 +300,13 @@ def thread_capture_frames():
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             
             if not cap.isOpened():
-                raise Exception("Could not open RTSP stream")
+                raise Exception("Could not open RTSP stream - Check Ngrok URL or Camera Power")
             
             print("✓ ESP32 connected")
             consecutive_errors = 0
             frame_count = 0
             
             while True:
-                # This read() will now timeout in 5s if stream dies (thanks to stimeout)
                 ret, frame = cap.read()
                 
                 if not ret:
@@ -319,7 +324,7 @@ def thread_capture_frames():
                     print("⚠️ Empty frame received")
                     break
                 
-                # Small sleep to prevent CPU spiking if stream is sending junk
+                # Small sleep to prevent CPU spiking
                 time.sleep(0.01)
             
         except Exception as e:
