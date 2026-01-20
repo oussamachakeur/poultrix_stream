@@ -140,7 +140,7 @@ app.add_middleware(
 # ============================================
 
 # Updated to use the public Ngrok tunnel
-ESP32_CAM_URL = "rtsp://poultrix:poultrix123@0.tcp.ap.ngrok.io:15178/stream2"
+ESP32_CAM_URL = "rtsp://poultrix:poultrix123@0.tcp.ap.ngrok.io:10874/stream2"
 
 class SharedState:
     def __init__(self):
@@ -282,8 +282,9 @@ def thread_capture_frames():
     while True:
         try:
             print("🔌 Connecting to ESP32 stream...")
+            #improving the RTSP connection stability
             os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
-            cap = cv2.VideoCapture(ESP32_CAM_URL, cv2.CAP_FFMPEG)
+            cap = cv2.VideoCapture(ESP32_CAM_URL, cv2.CAP_FFMPEG) # adding FFMPEG backend
             
             if not cap.isOpened():
                 raise Exception("Failed to open video stream")
