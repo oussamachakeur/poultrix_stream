@@ -140,7 +140,7 @@ app.add_middleware(
 # ============================================
 
 # Updated to use the public Ngrok tunnel
-ESP32_CAM_URL = "rtsp://poultrix:poultrix123@0.tcp.ap.ngrok.io:19734/stream2"
+ESP32_CAM_URL = "rtsp://poultrix:poultrix123@0.tcp.ap.ngrok.io:19779/stream2"
 
 class SharedState:
     def __init__(self):
@@ -279,10 +279,7 @@ def thread_capture_frames():
     consecutive_errors = 0
     max_errors = 5
     
-    # 1. CRITICAL: Force TCP and set a longer timeout
-    # 'stimeout' is in microseconds (120000000 = 2 minutes)
-    # 'analyzeduration' and 'probesize' reduce startup analysis time
-    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;120000000|analyzeduration;500000|probesize;500000"
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;5000000|analyzeduration;500000|probesize;500000"
     
     while True:
         cap = None
@@ -347,6 +344,7 @@ def thread_capture_frames():
 # ============================================
 # THREAD 2: GPU Inference
 # ============================================
+
 
 def thread_gpu_inference():
     print(f"🚀 [THREAD 2] Smart Cascading Pipeline @ {INFERENCE_FPS} FPS")
