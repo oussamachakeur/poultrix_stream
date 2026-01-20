@@ -140,7 +140,7 @@ app.add_middleware(
 # ============================================
 
 # Updated to use the public Ngrok tunnel - Can be updated dynamically via /update-camera-url
-ESP32_CAM_URL = os.environ.get("CAMERA_URL", "rtsp://poultrix:poultrix123@0.tcp.ap.ngrok.io:15655/stream2")
+ESP32_CAM_URL = os.environ.get("CAMERA_URL", "rtsp://poultrix:poultrix123@0.tcp.ap.ngrok.io:12557/stream2")
 
 class SharedState:
     def __init__(self):
