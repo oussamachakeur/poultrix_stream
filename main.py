@@ -139,8 +139,8 @@ app.add_middleware(
 # SHARED STATE
 # ============================================
 
-# Updated to use the public Ngrok tunnel
-ESP32_CAM_URL = "rtsp://poultrix:poultrix123@0.tcp.ap.ngrok.io:15655/stream2"  
+# Updated to use the public Ngrok tunnel - Can be updated dynamically via /update-camera-url
+ESP32_CAM_URL = os.environ.get("CAMERA_URL", "rtsp://poultrix:poultrix123@0.tcp.ap.ngrok.io:15655/stream2")
 
 class SharedState:
     def __init__(self):
@@ -198,7 +198,13 @@ def on_publish(client, userdata, mid):
 def setup_mqtt():
     global mqtt_client
     try:
-        mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
+        # Compatible with both old and new paho-mqtt versions
+        try:
+            mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
+        except AttributeError:
+            # Fallback for older paho-mqtt versions
+            mqtt_client = mqtt.Client()
+        
         mqtt_client.on_connect = on_connect
         mqtt_client.on_publish = on_publish
         
@@ -285,8 +291,8 @@ def thread_capture_frames():
         cap = None
         try:
             # Check if URL is valid before attempting connection
-            if not ESP32_CAM_URL or "ngrok" not in ESP32_CAM_URL and "127.0.0.1" not in ESP32_CAM_URL:
-                 print(f"⚠️ Invalid ESP32_CAM_URL: {ESP32_CAM_URL}. Waiting...")
+            if not ESP32_CAM_URL or not ESP32_CAM_URL.startswith("rtsp://"):
+                 print(f"⚠️ Invalid ESP32_CAM_URL (must start with rtsp://): {ESP32_CAM_URL}. Waiting...")
                  time.sleep(10)
                  continue
 
@@ -1328,4 +1334,49 @@ def get_metrics():
             "sent": metrics_copy['alerts_sent'],
             "blocked": metrics_copy['alerts_blocked_cooldown']
         }
+    }
+
+# ============================================
+# DYNAMIC CAMERA URL MANAGEMENT
+# ============================================
+
+@app.get("/camera-url")
+def get_camera_url():
+    """Get the current camera stream URL"""
+    global ESP32_CAM_URL
+    return {
+        "current_url": ESP32_CAM_URL,
+        "status": "connected" if state.raw_frame is not None else "disconnected"
+    }
+
+@app.post("/update-camera-url")
+async def update_camera_url(new_url: str = None):
+    """
+    Update camera URL dynamically without redeployment.
+    
+    Usage: POST /update-camera-url?new_url=rtsp://user:pass@host:port/stream
+    
+    Example for ngrok:
+    POST /update-camera-url?new_url=rtsp://poultrix:poultrix123@0.tcp.ap.ngrok.io:NEW_PORT/stream2
+    """
+    global ESP32_CAM_URL
+    
+    if not new_url:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "new_url parameter is required"}
+        )
+    
+    old_url = ESP32_CAM_URL
+    ESP32_CAM_URL = new_url
+    
+    print(f"📹 Camera URL updated:")
+    print(f"   Old: {old_url}")
+    print(f"   New: {new_url}")
+    
+    return {
+        "success": True,
+        "old_url": old_url,
+        "new_url": new_url,
+        "message": "Camera URL updated. Stream capture thread will reconnect automatically."
     }
